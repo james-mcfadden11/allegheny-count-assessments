@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Allegheny County Assessment Risk Dashboard</title>
+<style>
+  :root {
+    --ink: #1c2430;
+    --paper: #f2f4f3;
+    --panel: #ffffff;
+    --line: #d8dcda;
+    --teal: #2b6e6e;
+    --teal-dark: #1c4a4a;
+    --risk: #b5541f;
+    --risk-bg: #fbe9dd;
+    --safe: #2f6b3a;
+    --safe-bg: #e6f0e3;
+    font-family: "Iowan Old Style", "Georgia", serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+  }
+  header {
+    padding: 40px 32px 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  header h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    color: #5b6570;
+    max-width: 640px;
+    line-height: 1.5;
+    margin: 0;
+  }
+  .controls {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    padding: 20px 32px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .field label {
+    display: block;
+    font-size: 12px;
+    color: #5b6570;
+    margin-bottom: 6px;
+  }
+  .field input[type="text"] {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    width: 120px;
+    background: var(--paper);
+  }
+  .field input:focus {
+    outline: 2px solid var(--teal);
+    outline-offset: 1px;
+  }
+  .field input[type="file"] {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+  }
+  .status {
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: #5b6570;
+    padding: 0 32px;
+    margin-top: 14px;
+  }
+  .summary {
+    display: flex;
+    gap: 1px;
+    background: var(--line);
+    margin: 20px 32px 0;
+    border: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+  .summary .card {
+    background: var(--panel);
+    flex: 1;
+    min-width: 160px;
+    padding: 16px 18px;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+  .summary .card .num {
+    font-family: "Iowan Old Style", "Georgia", serif;
+    font-size: 26px;
+    font-weight: 600;
+  }
+  .summary .card .lbl {
+    font-size: 12px;
+    color: #5b6570;
+    margin-top: 4px;
+  }
+  main { padding: 20px 32px 60px; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--panel);
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 13.5px;
+  }
+  th {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--ink);
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+  }
+  th.num, td.num { text-align: right; }
+  td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  tr:hover td { background: #eef1f0; }
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill.risk { background: var(--risk-bg); color: var(--risk); }
+  .pill.safe { background: var(--safe-bg); color: var(--safe); }
+  .empty {
+    font-family: system-ui, -apple-system, sans-serif;
+    color: #5b6570;
+    padding: 40px 0;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Assessment Risk Dashboard</h1>
+  <p>Load the CSV from pull_assessment_data.py. For each recent sale, compares the current assessed value against the sale price, and estimates what the assessment and tax bill would become if the parcel were reassessed at the current Common Level Ratio.</p>
+</header>
+
+<div class="controls">
+  <div class="field">
+    <label for="csvFile">CSV file</label>
+    <input id="csvFile" type="file" accept=".csv">
+  </div>
+  <div class="field">
+    <label for="years">Sales within last N years</label>
+    <input id="years" type="text" value="3">
+  </div>
+  <div class="field">
+    <label for="clr">Current CLR (%)</label>
+    <input id="clr" type="text" value="52.14">
+  </div>
+  <div class="field">
+    <label for="millage">Combined millage (per $1,000)</label>
+    <input id="millage" type="text" value="24.74" style="width:120px">
+  </div>
+</div>
+<div class="status" id="status"></div>
+
+<div class="summary" id="summary" style="display:none">
+  <div class="card"><div class="num" id="sumCount">-</div><div class="lbl">sales found</div></div>
+  <div class="card"><div class="num" id="sumRatio">-</div><div class="lbl">median assessed / sale price</div></div>
+  <div class="card"><div class="num" id="sumRisk">-</div><div class="lbl">underassessed by 30%+</div></div>
+  <div class="card"><div class="num" id="sumTaxDelta">-</div><div class="lbl">median projected tax increase</div></div>
+</div>
+
+<main>
+  <table id="resultsTable" style="display:none">
+    <thead>
+      <tr>
+        <th data-key="address">Address</th>
+        <th data-key="saledate">Sale Date</th>
+        <th class="num" data-key="saleprice">Sale Price</th>
+        <th class="num" data-key="assessed">Current Assessed</th>
+        <th class="num" data-key="ratio">Ratio</th>
+        <th class="num" data-key="currenttax">Current Tax (est)</th>
+        <th class="num" data-key="projectedassessed">Projected Assessed</th>
+        <th class="num" data-key="projectedtax">Projected Tax (est)</th>
+        <th class="num" data-key="taxdelta">Tax Increase</th>
+      </tr>
+    </thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+  <div class="empty" id="emptyMsg">Choose a CSV file above to begin.</div>
+</main>
+
+<script>
+let rawRecords = [];
+let rows = [];
+let sortKey = "ratio";
+let sortAsc = true;
+
+function parseCSV(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.length > 0);
+  const headers = splitCSVLine(lines[0]);
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCSVLine(lines[i]);
+    const rec = {};
+    headers.forEach((h, idx) => { rec[h] = cells[idx]; });
+    records.push(rec);
+  }
+  return records;
+}
+
+function splitCSVLine(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (inQuotes) {
+      if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') { inQuotes = false; }
+      else { cur += c; }
+    } else {
+      if (c === '"') { inQuotes = true; }
+      else if (c === ",") { out.push(cur); cur = ""; }
+      else { cur += c; }
+    }
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseSaleDate(s) {
+  if (!s) return null;
+  const parts = s.split(/[/-]/);
+  if (parts.length !== 3) return null;
+  const a = parseInt(parts[0], 10);
+  const b = parseInt(parts[1], 10);
+  const y = parseInt(parts[2], 10);
+  const month = a > 12 ? b : a;
+  const day = a > 12 ? a : b;
+  const d = new Date(y, month - 1, day);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function buildRows(records, yearsBack, clrPct, millage) {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - yearsBack);
+  const clr = clrPct / 100;
+  const out = [];
+  for (const r of records) {
+    const saleDate = parseSaleDate(r.SALEDATE);
+    const salePrice = parseFloat(r.SALEPRICE);
+    const assessed = parseFloat(r.COUNTYTOTAL);
+    if (!saleDate || saleDate < cutoff) continue;
+    if (!salePrice || salePrice < 10000) continue;
+    if (!assessed) continue;
+    const ratio = assessed / salePrice;
+    const currentTax = assessed * millage / 1000;
+    const projectedAssessed = salePrice * clr;
+    const projectedTax = projectedAssessed * millage / 1000;
+    const taxDelta = projectedTax - currentTax;
+    const address = [r.PROPERTYHOUSENUM, r.PROPERTYADDRESS].filter(Boolean).join(" ");
+    out.push({
+      address: address || "(no address on file)",
+      saledate: saleDate,
+      saleprice: salePrice,
+      assessed: assessed,
+      ratio: ratio,
+      currenttax: currentTax,
+      projectedassessed: projectedAssessed,
+      projectedtax: projectedTax,
+      taxdelta: taxDelta
+    });
+  }
+  return out;
+}
+
+function fmtMoney(n) {
+  return "$" + Math.round(n).toLocaleString();
+}
+function fmtPct(n) {
+  return (n * 100).toFixed(0) + "%";
+}
+function fmtDate(d) {
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function render() {
+  const table = document.getElementById("resultsTable");
+  const body = document.getElementById("resultsBody");
+  const empty = document.getElementById("emptyMsg");
+  const summary = document.getElementById("summary");
+
+  if (rows.length === 0) {
+    table.style.display = "none";
+    summary.style.display = "none";
+    empty.style.display = "block";
+    empty.textContent = "No qualifying sales in this file for the chosen time window.";
+    return;
+  }
+
+  const sorted = [...rows].sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    const cmp = va instanceof Date ? va - vb : va - vb;
+    return sortAsc ? cmp : -cmp;
+  });
+
+  body.innerHTML = "";
+  for (const r of sorted) {
+    const tr = document.createElement("tr");
+    const risky = r.ratio < 0.7;
+    tr.innerHTML = `
+      <td>${r.address}</td>
+      <td>${fmtDate(r.saledate)}</td>
+      <td class="num">${fmtMoney(r.saleprice)}</td>
+      <td class="num">${fmtMoney(r.assessed)}</td>
+      <td class="num"><span class="pill ${risky ? "risk" : "safe"}">${fmtPct(r.ratio)}</span></td>
+      <td class="num">${fmtMoney(r.currenttax)}</td>
+      <td class="num">${fmtMoney(r.projectedassessed)}</td>
+      <td class="num">${fmtMoney(r.projectedtax)}</td>
+      <td class="num">${fmtMoney(r.taxdelta)}</td>
+    `;
+    body.appendChild(tr);
+  }
+
+  table.style.display = "table";
+  empty.style.display = "none";
+  summary.style.display = "flex";
+
+  const ratios = rows.map(r => r.ratio).sort((a, b) => a - b);
+  const medianRatio = ratios[Math.floor(ratios.length / 2)];
+  const deltas = rows.map(r => r.taxdelta).sort((a, b) => a - b);
+  const medianDelta = deltas[Math.floor(deltas.length / 2)];
+  const riskyCount = rows.filter(r => r.ratio < 0.7).length;
+
+  document.getElementById("sumCount").textContent = rows.length;
+  document.getElementById("sumRatio").textContent = fmtPct(medianRatio);
+  document.getElementById("sumRisk").textContent = riskyCount + " / " + rows.length;
+  document.getElementById("sumTaxDelta").textContent = fmtMoney(medianDelta);
+}
+
+function recompute() {
+  const years = parseInt(document.getElementById("years").value, 10) || 3;
+  const clr = parseFloat(document.getElementById("clr").value) || 52.14;
+  const millage = parseFloat(document.getElementById("millage").value) || 24.74;
+  rows = buildRows(rawRecords, years, clr, millage);
+  document.getElementById("status").textContent = `Showing ${rows.length} qualifying sales out of ${rawRecords.length} parcels loaded.`;
+  render();
+}
+
+document.querySelectorAll("th[data-key]").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (sortKey === key) sortAsc = !sortAsc;
+    else { sortKey = key; sortAsc = true; }
+    render();
+  });
+});
+
+["years", "clr", "millage"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => {
+    if (rawRecords.length) recompute();
+  });
+});
+
+document.getElementById("csvFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById("status");
+  status.textContent = "Reading file...";
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    rawRecords = parseCSV(ev.target.result);
+    status.textContent = `Loaded ${rawRecords.length} parcels.`;
+    recompute();
+  };
+  reader.onerror = () => {
+    status.textContent = "Could not read that file.";
+  };
+  reader.readAsText(file);
+});
+</script>
+
+</body>
+</html>
